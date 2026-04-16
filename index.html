@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>APEX Mission Control — Live GO/NO-GO Dashboard</title>
+  <style>
+    :root{
+      --bg:#0b1220; --panel:#0f1b33; --panel2:#122244;
+      --text:#e8eefc; --muted:#a9b7d0; --line:#203259;
+      --go:#2dd4bf; --caution:#fbbf24; --hold:#fb7185;
+      --shadow:0 10px 30px rgba(0,0,0,.35);
+      --radius:16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(1000px 600px at 20% 0%, rgba(96,165,250,.18), transparent 55%),
+                 radial-gradient(900px 650px at 85% 10%, rgba(167,139,250,.14), transparent 50%),
+                 var(--bg);
+         color:var(--text);font-family:var(--sans);}
+    header{padding:18px 22px 14px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;gap:14px;justify-content:space-between;align-items:flex-start;}
+    h1{margin:0;font-size:18px;letter-spacing:.4px}
+    .sub{margin-top:6px;color:var(--muted);font-size:12px;max-width:850px}
+
+    main{padding:14px 22px 26px;display:grid;grid-template-columns:1.35fr .85fr;gap:16px;}
+    @media (max-width: 980px){main{grid-template-columns:1fr}}
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+          border:1px solid rgba(255,255,255,.08);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+    .card .hd{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .card .hd h2{margin:0;font-size:12px;letter-spacing:.7px;text-transform:uppercase}
+    .card .hd .hint{color:var(--muted);font-size:12px}
+    .pad{padding:14px 16px;}
+
+    .kpis{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .kpi{background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px}
+    .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+    .kpi .v{margin-top:6px;font-size:18px;font-family:var(--mono)}
+    .kpi .s{margin-top:6px;font-size:12px;color:var(--muted)}
+
+    .list{display:flex;flex-direction:column;gap:10px}
+    .row{display:grid;grid-template-columns:64px 1fr 280px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+    .row:last-child{border-bottom:none}
+    .code{font-family:var(--mono);font-size:12px;color:#dbe7ff}
+    .name{display:flex;flex-direction:column;gap:3px}
+    .name b{font-size:13px}
+    .name span{color:var(--muted);font-size:12px}
+
+    .seg{display:inline-flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+    .seg input{display:none}
+    .btn{
+      cursor:pointer; user-select:none;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.03);
+      font-size:12px;
+      color:var(--muted);
+      font-family:var(--mono);
+      letter-spacing:.2px;
+    }
+    .seg input:checked + .btn{color:#09111f;border-color:transparent}
+    .seg input:checked + .btn.go{background:rgba(45,212,191,.95)}
+    .seg input:checked + .btn.caution{background:rgba(251,191,36,.95)}
+    .seg input:checked + .btn.hold{background:rgba(251,113,133,.95)}
+
+    .dot{width:10px;height:10px;border-radius:999px;display:inline-block;background:var(--muted)}
+    .dot.go{background:var(--go)}
+    .dot.caution{background:var(--caution)}
+    .dot.hold{background:var(--hold)}
+
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .action{
+      cursor:pointer;
+      padding:8px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      font-size:12px;
+      font-family:var(--mono);
+    }
+    .action:hover{background:rgba(255,255,255,.07)}
+
+    .log{font-size:12px;color:var(--muted);white-space:pre-wrap;line-height:1.35}
+    .warn{color:#ffd1d6}
+
+    .banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.18)}
+    .banner .left{display:flex;flex-direction:column;gap:4px}
+    .banner .left b{font-family:var(--mono);font-size:14px}
+    .banner .left span{font-size:12px;color:var(--muted)}
+    .banner .right{display:flex;align-items:center;gap:8px}
+    .pill{font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03)}
+    .pill.go{border-color:rgba(45,212,191,.45);color:rgba(45,212,191,.95)}
+    .pill.caution{border-color:rgba(251,191,36,.45);color:rgba(251,191,36,.95)}
+    .pill.hold{border-color:rgba(251,113,133,.45);color:rgba(251,113,133,.95)}
+
+    .smallnote{margin-top:10px;color:var(--muted);font-size:11px}
+    a{color:#93c5fd}
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>APEX Mission Control — Live GO/NO-GO Dashboard</h1>
+    <div class="sub">
+      Toggle each console to <b>GO</b>, <b>CAUTION</b>, or <b>HOLD</b>. Gate logic: any <b>HOLD</b> stops GO LIVE; GO LIVE only callable when all 10 GO parameters are <b>GO</b>.
+    </div>
+  </div>
+  <div class="toolbar">
+    <button class="action" id="btnReset">RESET</button>
+    <button class="action" id="btnExport">EXPORT JSON</button>
+    <button class="action" id="btnImport">IMPORT JSON</button>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <div class="hd">
+      <h2>Flight Plan (7 Phases)</h2>
+      <div class="hint">Each phase is a GO/NO-GO gate.</div>
+    </div>
+    <div class="pad">
+      <div class="banner" id="launchBanner">
+        <div class="left">
+          <b id="launchTitle">GO LIVE — NOT READY</b>
+          <span id="launchSubtitle">Set all 10 GO parameters to GO to reach READY.</span>
+        </div>
+        <div class="right">
+          <span class="dot" id="postureDot"></span>
+          <span class="pill" id="posturePill">CAUTION</span>
+        </div>
+      </div>
+
+      <div class="smallnote">Stand-up cadence commonly uses GO / CAUTION / HOLD; the GO/NO-GO gate is GO or HOLD (HOLD = NO-GO).</div>
+
+      <div class="list" id="phaseList"></div>
+    </div>
+  </section>
+
+  <aside style="display:flex;flex-direction:column;gap:16px">
+    <section class="card">
+      <div class="hd">
+        <h2>KPIs</h2>
+        <div class="hint">Derived from toggle state.</div>
+      </div>
+      <div class="pad">
+        <div class="kpis">
+          <div class="kpi">
+            <div class="l">GO parameters</div>
+            <div class="v"><span id="kpiGo">0</span>/10</div>
+            <div class="s">Confirmed GO</div>
+          </div>
+          <div class="kpi">
+            <div class="l">Posture</div>
+            <div class="v" id="kpiPosture">CAUTION</div>
+            <div class="s">Worst status wins</div>
+          </div>
+          <div class="kpi">
+            <div class="l">HOLD count</div>
+            <div class="v" id="kpiHold">0</div>
+            <div class="s">Unresolved HOLDs</div>
+          </div>
+          <div class="kpi">
+            <div class="l">CAUTION count</div>
+            <div class="v" id="kpiCaution">0</div>
+            <div class="s">Risks before HOLD</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="hd">
+        <h2>Audit Log (local)</h2>
+        <div class="hint">Saved in this browser.</div>
+      </div>
+      <div class="pad">
+        <div class="log" id="audit"></div>
+      </div>
+    </section>
+  </aside>
+
+  <section class="card" style="grid-column:1 / -1;">
+    <div class="hd">
+      <h2>GO for Launch — 10 Parameters</h2>
+      <div class="hint">Each parameter owned by one console.</div>
+    </div>
+    <div class="pad">
+      <div class="list" id="paramList"></div>
+      <div class="smallnote">
+        Tip: Click a console status. Your selections persist via <code>localStorage</code>.
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Import dialog (simple) -->
+<input type="file" id="importFile" accept="application/json" style="display:none" />
+
+<script>
+  // === Data: phases + GO parameters ===
+  // Names and console owners align to APEX mission logs.
+  const phases = [
+    {id:'P01', code:'01', name:'Mission Architecture', sap:'SAP: Discover'},
+    {id:'P02', code:'02', name:'Mobilise', sap:'SAP: Prepare'},
+    {id:'P03', code:'03', name:'Solution Design', sap:'SAP: Explore'},
+    {id:'P04', code:'04', name:'Build & Rehearse', sap:'SAP: Realize'},
+    {id:'P05', code:'05', name:'Countdown', sap:'SAP: Deploy'},
+    {id:'P06', code:'06', name:'GO LIVE', sap:'SAP: Go-Live'},
+    {id:'P07', code:'07', name:'Mission Operations', sap:'SAP: Run'},
+  ];
+
+  const params = [
+    {id:'GO01', code:'GO-01', name:'Solution Complete', owner:'Solution Architect'},
+    {id:'GO02', code:'GO-02', name:'System Ready', owner:'Technical Lead'},
+    {id:'GO03', code:'GO-03', name:'Data Loaded & Reconciled', owner:'Data Migration Lead'},
+    {id:'GO04', code:'GO-04', name:'Integrations Live', owner:'Integration Lead'},
+    {id:'GO05', code:'GO-05', name:'Tests Signed Off', owner:'Test Lead'},
+    {id:'GO06', code:'GO-06', name:'Users Ready', owner:'Change & Adoption Lead'},
+    {id:'GO07', code:'GO-07', name:'Cutover Ready', owner:'Project Lead'},
+    {id:'GO08', code:'GO-08', name:'Risk Cleared', owner:'Quality & Risk Lead'},
+    {id:'GO09', code:'GO-09', name:'Impact Ready', owner:'Executive Sponsor Lead'},
+    {id:'GO10', code:'GO-10', name:'Commercial Cleared', owner:'Commercial Lead'},
+  ];
+
+  // === State ===
+  const KEY = 'apex_mission_control_state_v1';
+  const defaultState = {
+    phases: Object.fromEntries(phases.map(p => [p.id, 'CAUTION'])),
+    params: Object.fromEntries(params.map(p => [p.id, 'CAUTION'])),
+    audit: []
+  };
+
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(!raw) return structuredClone(defaultState);
+      const parsed = JSON.parse(raw);
+      // basic merge to tolerate future schema changes
+      return {
+        phases: {...defaultState.phases, ...(parsed.phases||{})},
+        params:  {...defaultState.params,  ...(parsed.params||{})},
+        audit:  Array.isArray(parsed.audit) ? parsed.audit.slice(-200) : []
+      };
+    }catch(e){
+      return structuredClone(defaultState);
+    }
+  }
+
+  function saveState(){
+    localStorage.setItem(KEY, JSON.stringify(state));
+  }
+
+  function nowStamp(){
+    const d = new Date();
+    return d.toISOString().replace('T',' ').slice(0,19);
+  }
+
+  function logAudit(msg){
+    state.audit.push(`${nowStamp()}  ${msg}`);
+    state.audit = state.audit.slice(-200);
+    saveState();
+    renderAudit();
+  }
+
+  let state = loadState();
+
+  // === Rendering ===
+  function segControl(groupName, id, current){
+    const mk = (val, cls, label) => {
+      const rid = `${id}_${val}`;
+      const checked = current === val ? 'checked' : '';
+      return `
+        <label class="seg">
+          <input type="radio" name="${groupName}_${id}" id="${rid}" value="${val}" ${checked}>
+          <span class="btn ${cls}">${label}</span>
+        </label>`;
+    };
+    // wrap in container with delegated click handler
+    return `
+      <div class="seg" data-target="${id}" data-group="${groupName}">
+        <label>
+          <input type="radio" name="${groupName}_${id}" value="GO" ${current==='GO'?'checked':''}>
+          <span class="btn go">GO</span>
+        </label>
+        <label>
+          <input type="radio" name="${groupName}_${id}" value="CAUTION" ${current==='CAUTION'?'checked':''}>
+          <span class="btn caution">CAUTION</span>
+        </label>
+        <label>
+          <input type="radio" name="${groupName}_${id}" value="HOLD" ${current==='HOLD'?'checked':''}>
+          <span class="btn hold">HOLD</span>
+        </label>
+      </div>`;
+  }
+
+  function renderPhases(){
+    const el = document.getElementById('phaseList');
+    el.innerHTML = phases.map(p => {
+      const cur = state.phases[p.id] || 'CAUTION';
+      return `
+        <div class="row">
+          <div class="code">${p.code}</div>
+          <div class="name">
+            <b>${p.name}</b>
+            <span>${p.sap}</span>
+          </div>
+          ${segControl('phases', p.id, cur)}
+        </div>`;
+    }).join('');
+  }
+
+  function renderParams(){
+    const el = document.getElementById('paramList');
+    el.innerHTML = params.map(p => {
+      const cur = state.params[p.id] || 'CAUTION';
+      return `
+        <div class="row">
+          <div class="code">${p.code}</div>
+          <div class="name">
+            <b>${p.name}</b>
+            <span>Owner: ${p.owner}</span>
+          </div>
+          ${segControl('params', p.id, cur)}
+        </div>`;
+    }).join('');
+  }
+
+  function worstStatus(values){
+    // HOLD > CAUTION > GO
+    if(values.includes('HOLD')) return 'HOLD';
+    if(values.includes('CAUTION')) return 'CAUTION';
+    return 'GO';
+  }
+
+  function dotClass(s){
+    return s==='GO'?'go':(s==='HOLD'?'hold':'caution');
+  }
+
+  function pillClass(s){
+    return s==='GO'?'pill go':(s==='HOLD'?'pill hold':'pill caution');
+  }
+
+  function calcAndRenderKPIs(){
+    const pVals = Object.values(state.params);
+    const phVals = Object.values(state.phases);
+
+    const goCount = pVals.filter(x=>x==='GO').length;
+    const holdCount = [...pVals, ...phVals].filter(x=>x==='HOLD').length;
+    const cautionCount = [...pVals, ...phVals].filter(x=>x==='CAUTION').length;
+
+    const posture = worstStatus([...pVals, ...phVals]);
+
+    document.getElementById('kpiGo').textContent = goCount;
+    document.getElementById('kpiHold').textContent = holdCount;
+    document.getElementById('kpiCaution').textContent = cautionCount;
+    document.getElementById('kpiPosture').textContent = posture;
+
+    const dot = document.getElementById('postureDot');
+    dot.className = 'dot ' + dotClass(posture);
+
+    const pill = document.getElementById('posturePill');
+    pill.className = pillClass(posture);
+    pill.textContent = posture;
+
+    // GO LIVE readiness rule: all 10 GO parameters must be GO, and no HOLD anywhere.
+    const ready = (goCount === 10) && (holdCount === 0);
+
+    const title = document.getElementById('launchTitle');
+    const subtitle = document.getElementById('launchSubtitle');
+    if(ready){
+      title.textContent = 'GO LIVE — READY';
+      subtitle.textContent = 'All 10 GO parameters are GO; no unresolved HOLDs.';
+    } else {
+      title.textContent = 'GO LIVE — NOT READY';
+      if(holdCount>0) subtitle.innerHTML = `<span class="warn">Unresolved HOLD present.</span> Any HOLD pauses the go-live.`;
+      else subtitle.textContent = `Need ${10-goCount} more GO parameter(s) set to GO.`;
+    }
+  }
+
+  function renderAudit(){
+    const el = document.getElementById('audit');
+    if(!state.audit.length){
+      el.textContent = 'No changes recorded yet.';
+      return;
+    }
+    el.textContent = state.audit.slice().reverse().join('\n');
+  }
+
+  function renderAll(){
+    renderPhases();
+    renderParams();
+    calcAndRenderKPIs();
+    renderAudit();
+  }
+
+  // === Events ===
+  function handleToggleChange(evt){
+    const input = evt.target;
+    if(input.tagName !== 'INPUT' || input.type !== 'radio') return;
+
+    const wrapper = input.closest('.seg');
+    if(!wrapper) return;
+
+    const id = wrapper.getAttribute('data-target');
+    const group = wrapper.getAttribute('data-group');
+    const val = input.value;
+
+    if(group === 'phases'){
+      state.phases[id] = val;
+      logAudit(`PHASE ${id} → ${val}`);
+    } else if(group === 'params'){
+      state.params[id] = val;
+      logAudit(`PARAM ${id} → ${val}`);
+    }
+
+    saveState();
+    calcAndRenderKPIs();
+  }
+
+  document.addEventListener('change', handleToggleChange);
+
+  document.getElementById('btnReset').addEventListener('click', () => {
+    state = structuredClone(defaultState);
+    saveState();
+    renderAll();
+  });
+
+  document.getElementById('btnExport').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify({phases: state.phases, params: state.params}, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'apex_mission_control_status.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('btnImport').addEventListener('click', () => {
+    document.getElementById('importFile').click();
+  });
+
+  document.getElementById('importFile').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    try{
+      const txt = await f.text();
+      const obj = JSON.parse(txt);
+      if(obj.phases) state.phases = {...state.phases, ...obj.phases};
+      if(obj.params)  state.params  = {...state.params,  ...obj.params};
+      logAudit('IMPORTED JSON state');
+      saveState();
+      renderAll();
+    }catch(err){
+      alert('Import failed: invalid JSON');
+    }
+    e.target.value = '';
+  });
+
+  // Initial render
+  renderAll();
+</script>
+</body>
+</html>
